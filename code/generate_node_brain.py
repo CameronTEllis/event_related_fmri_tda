@@ -14,7 +14,9 @@ from sklearn import linear_model
 from brainiak.utils import fmrisim as sim
 import logging
 import os
-
+from nilearn.image import smooth_img
+np.seterr(divide='ignore')  # Not relevant for this script
+        
 # What are the system inputs?
 
 # What participant are you analyzing
@@ -57,12 +59,20 @@ else:
 logger = logging.getLogger(__name__)
 
 # If it is not a resample, do you want to save some plots
-save_signal_func = 1  # Save the plot of the signal function?
+save_signal_func = 0  # Save the plot of the signal function?
 save_functional = 1  # Do you want to save the functional (with node_brain)
 
 # Inputs for generate_signal
 temporal_res = 100  # How many samples per second are there for timing files
 tr_duration = 2  # Force this value
+fwhm = 0 # What is the fwhm of the smoothing kernel
+all_pos = 1  # Assume all activation is positive
+bound_to_global_max = 0 # Is the signal range based on the global average, or is it voxel specific so that each voxel has the signal magnitude specified?
+
+# Set analysis parameters
+hrf_lag = 2 # How many TRs is the event offset by?
+zscore_time = 1  # Do you want to z score each voxel in time
+zscore_volume = 0  # Do you want to z score a volume
 
 # What are the timing properties
 minimum_isi = timing_properties[0]
@@ -72,10 +82,6 @@ repetitions_per_run = timing_properties[3]  # How many nodes are you simulating
 nodes = timing_properties[4]  # How many nodes are to be created
 deconvolution = timing_properties[5] # Do you want to use the deconvolution method for aggregating across events
 
-# Structure (some will be ignored if the community structure is set)
-# Schapiro presented approximately 300 events and so trying not to exceed
-# that is appropriate
-all_pos = 1  # Assume all activation is positive
 
 ## Set definitions
 
@@ -138,11 +144,6 @@ def regress_voxels(voxel_time,
     else:
         return voxels_r2
 
-# Set analysis parameters
-
-hrf_lag = 2 # How many TRs is the event offset by?
-zscore_time = 1  # Do you want to z score each voxel in time
-zscore_volume = 0  # Do you want to z score a volume
 
 signal_properties_str = str(signal_properties)
 signal_properties_str = signal_properties_str.replace('[', '_').replace(',',
@@ -183,7 +184,7 @@ print('Loading ' + participant)
 
 # Load significant voxels
 nii = nibabel.load(SigMask)
-signal_mask = nii.get_data()  # Takes a while
+signal_mask = nii.get_data()
 
 dimsize = nii.header.get_zooms()  # x, y, z and TR size
 
@@ -241,6 +242,7 @@ else:
                     node = (nodes - 1)
 
         # Store the runs
+        print('There are %d onsets in run %d' % (len(onsets), run_counter))
         onsets_runs[run_counter] = onsets
 
 # How many runs are there?
@@ -258,85 +260,72 @@ for idx_counter in list(range(0, len(idx_list[0]))):
     idxs[idx_counter, 1] = idx_list[1][idx_counter]
     idxs[idx_counter, 2] = idx_list[2][idx_counter]
 
+idxs = idxs.astype('int8')    
+    
 # What voxels are they
 dimensions = signal_mask.shape
 
 # Cycle through the runs and generate the data
 node_brain = np.zeros([dimensions[0], dimensions[1], dimensions[2],
-                       nodes, 5], dtype='double')  # Preset
+                       nodes, runs], dtype='double')  # Preset
 
 # Generate the graph structure (based on the ratio)
 if signal_structure == 'community_structure':
-    signal_coords_orig = graphs.community_structure(signal_properties[0],
-                                                    )
+    signal_coords = graphs.community_structure(signal_properties[0],
+                                              )
 elif signal_structure == 'parallel_rings':
-    signal_coords_orig = graphs.parallel_rings(nodes,
-                                               signal_properties[0],
-                                               signal_properties[1],
-                                               )
-elif signal_structure == 'figure_eight':
-    signal_coords_orig = graphs.figure_eight(nodes,
-                                             signal_properties[0],
-                                             signal_properties[1],
-                                             )
-elif signal_structure == 'chain_rings':
-    signal_coords_orig = graphs.chain_rings(nodes,
-                                            signal_properties[0],
-                                            signal_properties[1],
-                                            )
-elif signal_structure == 'dispersed_clusters':
-    signal_coords_orig = graphs.dispersed_clusters(nodes,
-                                                   signal_properties[0],
-                                                   signal_properties[1],
-                                                   signal_properties[2],
-                                                   )
-elif signal_structure == 'tendrils':
-    signal_coords_orig = graphs.tendrils(nodes,
-                                         signal_properties[0],
-                                         signal_properties[1],
+    signal_coords = graphs.parallel_rings(nodes,
+                                          signal_properties[0],
+                                          signal_properties[1],
                                          )
-elif signal_structure == 'elipse':
-    # Sort the procedure for determining the elipsis dimensions
-    if signal_properties[0] == 1:
-        # Determine based on the participant counter
-        if np.mod(participant_counter, 2) == 0:
-            x_coef = 0.5
-            y_coef = 1
-        else:
-            x_coef = 1
-            y_coef = 0.5
-    else:
-        # Randomise whether this is a fat or tall elipse
-        if np.random.rand() > 0.5:
-            x_coef = 0.5
-            y_coef = 1
-        else:
-            x_coef = 1
-            y_coef = 0.5
-            
-    signal_coords_orig = graphs.elipse(nodes,
-                                       x_coef,
-                                       y_coef,
+elif signal_structure == 'figure_eight':
+    signal_coords = graphs.figure_eight(nodes,
+                                        signal_properties[0],
+                                        signal_properties[1],
                                        )
+elif signal_structure == 'chain_rings':
+    signal_coords = graphs.chain_rings(nodes,
+                                       signal_properties[0],
+                                       signal_properties[1],
+                                      )
+elif signal_structure == 'dispersed_clusters':
+    signal_coords = graphs.dispersed_clusters(nodes,
+                                              signal_properties[0],
+                                              signal_properties[1],
+                                              signal_properties[2],
+                                             )
+elif signal_structure == 'tendrils':
+    signal_coords = graphs.tendrils(nodes,
+                                    signal_properties[0],
+                                    signal_properties[1],
+                                   )
+elif signal_structure == 'elipse':
+    signal_coords = graphs.elipse(nodes,
+                                  signal_properties[0],
+                                  signal_properties[1],
+                                 )
 
 
 # Perform an orthonormal transformation of the data
-if vector_size > signal_coords_orig.shape[1]:
-    signal_coords_orig = graphs.orthonormal_transform(vector_size,
-                                                      signal_coords_orig)
+if vector_size > signal_coords.shape[1]:
+    signal_coords = graphs.orthonormal_transform(vector_size,
+                                                      signal_coords)
 
 # Do you want these coordinates to be all positive? This means that
 # these coordinates are represented as different magnitudes of
 # activation
 if all_pos == 1:
-    mins = np.abs(np.min(signal_coords_orig, 0))
+    mins = np.abs(np.min(signal_coords, 0))
     for voxel_counter in list(range(0, len(mins))):
-        signal_coords_orig[:, voxel_counter] += mins[voxel_counter]
+        signal_coords[:, voxel_counter] += mins[voxel_counter]
 
 # Bound the value to have a max of 1 so that the signal magnitude is more interpretable
-signal_coords_orig /= np.max(signal_coords_orig)
+if bound_to_global_max == 1:
+    signal_coords /= np.max(signal_coords.flatten())
+else:
+    signal_coords /= np.max(signal_coords, 0)
 
-for run_counter in list(range(1, runs)):
+for run_counter in list(range(1, runs + 1)):
 
     # Get run specific names
     template_name = parameters_path + 'template/' + participant + '_r' + \
@@ -346,7 +335,7 @@ for run_counter in list(range(1, runs)):
     nifti_save = simulated_data_path + 'nifti/' + participant + '_r' + str(run_counter)\
                  + effect_name + '.nii.gz'
     signal_func_save = './plots/' + participant + '_r' +\
-                       str(run_counter) + effect_name + '.eps'
+                       str(run_counter) + effect_name + '.png'
 
     # Load the template (not yet scaled
     nii = nibabel.load(template_name)
@@ -435,13 +424,6 @@ for run_counter in list(range(1, runs)):
 
     noise_dict = eval(noise_dict)
 
-    # Convert the percent signal change into mr values
-    mean_activity = ((template * noise_dict['max_activity'])[mask > 0]).mean()
-    scale = np.abs(signal_magnitude) * mean_activity / 100
-
-    # Create the graph structure based on this effect size
-    signal_coords = signal_coords_orig * scale
-
     # Preset brain size
     brain_signal = np.zeros([dimensions[0], dimensions[1], dimensions[2],
                              int(duration / tr_duration)], dtype='double')
@@ -452,14 +434,8 @@ for run_counter in list(range(1, runs)):
         # Preset value
         volume = np.zeros(dimensions[0:3])
 
-        # Preset the signal
-        signal_pattern = np.ones(vector_size)
-
-        # Take the coordinates from the signal template
-        for voxel_counter in list(range(0, signal_coords.shape[1])):
-            signal_pattern[voxel_counter] = signal_coords[node_counter,
-                                                          voxel_counter]
-
+        # Pull out the signal template
+        signal_pattern = signal_coords[node_counter, :]
         onsets_node = onsets[node_counter]
 
         # Create the time course for the signal to be generated
@@ -474,76 +450,88 @@ for run_counter in list(range(1, runs)):
             stimfunc_all = np.zeros((len(stimfunc), vector_size))
             for voxel_counter in list(range(0, vector_size)):
                 stimfunc_all[:, voxel_counter] = np.asarray(
-                    stimfunc).transpose()\
-                                                 * \
-                                                 signal_coords[
-                                                     node_counter, voxel_counter]
+                    stimfunc).transpose() * signal_pattern[voxel_counter]
         else:
 
             # Add these elements together
             temp = np.zeros((len(stimfunc), vector_size))
             for voxel_counter in list(range(0, vector_size)):
-                temp[:, voxel_counter] = np.asarray(stimfunc).transpose() * \
-                                         signal_coords[
-                                             node_counter, voxel_counter]
+                temp[:, voxel_counter] = np.asarray(stimfunc).transpose() * signal_pattern[voxel_counter]
 
             stimfunc_all += temp
 
     # After you have gone through all the nodes, convolve the HRF and
     # stimulation for each voxel
     print('Convolving HRF')
+    
+    # Decide if you are going to scale to global max (need to stop the convolve_hrf rescaling)
+    if bound_to_global_max == 1:
+        scale_function = False
+    else:
+        scale_function = True
+    
     signal_func = sim.convolve_hrf(stimfunction=stimfunc_all,
                                    tr_duration=tr_duration,
                                    temporal_resolution=temporal_res,
+                                   scale_function=scale_function,
                                    )
-    if save_signal_func == 1 and resample == 0 and run_counter == 0:
+    
+    # Do the final rescaling to the global max
+    if bound_to_global_max == 1:
+        signal_func /= np.max(signal_func.flatten())
+    
+    if save_signal_func == 1 and resample == 0 and run_counter == 1:
         plt.plot(stimfunc_all[::int(temporal_res * tr_duration), 0])
         plt.plot(signal_func[:,0])
         plt.xlim((0, 200))
         plt.ylim((-1, 5))
         plt.savefig(signal_func_save)
 
-    # Multiply the convolved responses with their magnitudes (after being
-    # scaled)
-    print('Combine signal across space and time')
-    for voxel_counter in list(range(0, vector_size)):
-        # Reset the range of the function to be appropriate for the
-        # stimfunc
-        signal_func[:, voxel_counter] *= stimfunc_all[:,
-                                         voxel_counter].max()
-
-    # Multiply the voxels with signal by the HRF function
-    brain_signal = sim.apply_signal(signal_function=signal_func,
-                                    volume_signal=signal_mask,
-                                    )
-
     # Convert the stim func into a binary vector of dim 1
     stimfunc_binary = np.mean(np.abs(stimfunc_all)>0, 1) > 0
     stimfunc_binary = stimfunc_binary[::int(tr_duration * temporal_res)]
 
     # Bound, can happen if the duration is not rounded to a TR
-    stimfunc_binary = stimfunc_binary[0:brain_signal.shape[3]]
+    stimfunc_binary = stimfunc_binary[0:signal_func.shape[0]]
+
+    # Create the noise volumes (using the default parameters)
+    noise = sim.generate_noise(dimensions=dimensions[0:3],
+                               stimfunction_tr=stimfunc_binary,
+                               tr_duration=tr_duration,
+                               template=template,
+                               mask=mask,
+                               noise_dict=noise_dict,
+                               )
+
+    # Change the type of noise
+    noise = noise.astype('double')
+
+    # Create a noise function (same voxels for signal function as for noise)
+    noise_function = noise[idxs[:, 0], idxs[:, 1], idxs[:, 2], :].T
+
+    # Compute the signal magnitude for the data
+    signal_func_scaled = sim.compute_signal_change(signal_function=signal_func,
+                                                   noise_function=noise_function,
+                                                   noise_dict=noise_dict,
+                                                   magnitude=[
+                                                       signal_magnitude],
+                                                   method='PSC',
+                                                   )
+    
+    # Multiply the voxels with signal by the HRF function
+    brain_signal = sim.apply_signal(signal_function=signal_func_scaled,
+                                    volume_signal=signal_mask,
+                                    )
+
+    # Convert any nans to 0s
+    brain_signal[np.isnan(brain_signal)] = 0
 
     # Combine the signal and the noise (as long as the signal magnitude is above 0)
     if signal_magnitude >= 0:
 
-        # Create the noise volumes (using the default parameters)
-        noise = sim.generate_noise(dimensions=dimensions[0:3],
-                                   stimfunction_tr=stimfunc_binary,
-                                   tr_duration=tr_duration,
-                                   template=template,
-                                   mask=mask,
-                                   noise_dict=noise_dict,
-                                   )
-
-        # Change the type of noise
-        noise = noise.astype('double')
-
-        # Convert any nans to 0s
-        brain_signal[np.isnan(brain_signal)] = 0
-
         # Combine the signal and the noise
         brain = brain_signal + noise
+        
     else:
         # Don't make signal just add it here
         brain = brain_signal
@@ -557,6 +545,19 @@ for run_counter in list(range(1, runs)):
         hdr = brain_nifti.header
         hdr.set_zooms((dimsize[0], dimsize[1], dimsize[2], 2.0))
         nibabel.save(brain_nifti, nifti_save)  # Save
+    
+    # Do you want to perform smoothing
+    if fwhm > 0:
+ 
+        # Convert to nifti
+        brain_nifti = nibabel.Nifti1Image(brain, nii.affine)
+        
+        # Run the smoothing step
+
+        sm_nii = smooth_img(brain_nifti, fwhm)
+
+        # Pull out the data again and continue on
+        brain = sm_nii.get_data()
 
     # Z score the data
     if zscore_time == 1:

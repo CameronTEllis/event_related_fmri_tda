@@ -10,6 +10,8 @@
 source code/setup_environment.sh
 
 # Inputs are:
-# 1: searchlight name
-# 2: output dir
-python ./code/test_signal_vol.py $1 $2
+searchlight_name=$1 # 1: searchlight name
+output_dir=$2 # 2: output dir
+
+# Run job
+python ./code/test_signal_vol.py $searchlight_name $output_dir

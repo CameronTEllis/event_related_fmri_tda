@@ -125,8 +125,10 @@ def sl_kernel(data, mask, myrad, bcvar):
         sl_outputs = test_tda_loop_counter(distance_matrix)
     elif bcvar == 'loop_max':
         sl_outputs = test_tda_loop_max(distance_matrix)
-    elif bcvar == 'loop_ratio':
-        sl_outputs = test_tda_loop_threshold_ratio(distance_matrix)
+    elif bcvar.find('loop_ratio_') >= 0:
+        
+        ratio_threshold = float(bcvar[bcvar.rfind('_') + 1:])
+        sl_outputs = test_tda_loop_threshold_ratio(distance_matrix, ratio_threshold)
     else:
         print('No function called by ' + bcvar)
         raise

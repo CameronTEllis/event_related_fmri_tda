@@ -74,7 +74,7 @@ scale = whole_counts.max() / signal_counts.max()
 #plt.savefig(output_dir + condition + '.png')
 
 # To deal with the simultaneous file writing that will happen if you run this many thousands of times, wait up to 90 seconds to continue
-time.sleep(np.random.randint(90))
+time.sleep(np.random.randint(120))
 
 if searchlight_file.find('loop_max') > -1:
 
@@ -83,15 +83,19 @@ if searchlight_file.find('loop_max') > -1:
     tstat_flipped = stats.ttest_ind(signal_vox, flipped_vox)
 
     # Store the t statistic for the test
-    with open(output_dir + 'signal_vs_whole.txt', 'a') as fid:
-        fcntl.flock(fid, fcntl.LOCK_EX)
-        fid.write('%s: %0.5f\n' % (condition, tstat_whole.statistic))
-        fcntl.flock(fid, fcntl.LOCK_UN)
+    output = output_dir + 'signal_vs_whole.txt'
+    if os.path.exists(output) == 0 or condition not in open(output).read():    
+        with open(output, 'a') as fid:
+            fcntl.flock(fid, fcntl.LOCK_EX)
+            fid.write('%s: %0.5f\n' % (condition, tstat_whole.statistic))
+            fcntl.flock(fid, fcntl.LOCK_UN)
     
-    with open(output_dir + 'signal_vs_flipped.txt', 'a') as fid:
-        fcntl.flock(fid, fcntl.LOCK_EX)
-        fid.write('%s: %0.5f\n' % (condition, tstat_flipped.statistic))
-        fcntl.flock(fid, fcntl.LOCK_UN)
+    output = output_dir + 'signal_vs_flipped.txt'
+    if os.path.exists(output) == 0 or condition not in open(output).read():        
+        with open(output, 'a') as fid:
+            fcntl.flock(fid, fcntl.LOCK_EX)
+            fid.write('%s: %0.5f\n' % (condition, tstat_flipped.statistic))
+            fcntl.flock(fid, fcntl.LOCK_UN)
     
 elif searchlight_file.find('loop_counter') > -1:
 
@@ -100,15 +104,20 @@ elif searchlight_file.find('loop_counter') > -1:
     proportion_flipped = (flipped_vox == expected_loops).mean()
 
     # Store data
-    with open(output_dir + 'signal_proportion.txt', 'a') as fid:
-        fcntl.flock(fid, fcntl.LOCK_EX)
-        fid.write('%s: %0.5f\n' % (condition, proportion_signal))
-        fcntl.flock(fid, fcntl.LOCK_UN)
+    output = output_dir + 'signal_proportion.txt'
+    if os.path.exists(output) == 0 or condition not in open(output).read():    
+        with open(output, 'a') as fid:
+            fcntl.flock(fid, fcntl.LOCK_EX)
+            fid.write('%s: %0.5f\n' % (condition, proportion_signal))
+            fcntl.flock(fid, fcntl.LOCK_UN)
         
-    with open(output_dir + 'flipped_proportion.txt', 'a') as fid:
-        fcntl.flock(fid, fcntl.LOCK_EX)
-        fid.write('%s: %0.5f\n' % (condition, proportion_flipped))
-        fcntl.flock(fid, fcntl.LOCK_UN)
+    output = output_dir + 'flipped_proportion.txt'    
+    if os.path.exists(output) == 0 or condition not in open(output).read():
+        with open(output, 'a') as fid:
+            fcntl.flock(fid, fcntl.LOCK_EX)
+            fid.write('%s: %0.5f\n' % (condition, proportion_flipped))
+            fcntl.flock(fid, fcntl.LOCK_UN)
+            
 elif searchlight_file.find('loop_ratio') > -1:
 
     # Calculate the proportion of voxels that equal 1
@@ -116,14 +125,18 @@ elif searchlight_file.find('loop_ratio') > -1:
     proportion_flipped = (flipped_vox == expected_loops).mean()
 
     # Store data
-    with open(output_dir + 'signal_ratio.txt', 'a') as fid:
-        fcntl.flock(fid, fcntl.LOCK_EX)
-        fid.write('%s: %0.5f\n' % (condition, proportion_signal))
-        fcntl.flock(fid, fcntl.LOCK_UN)
-        
-    with open(output_dir + 'flipped_ratio.txt', 'a') as fid:
-        fcntl.flock(fid, fcntl.LOCK_EX)
-        fid.write('%s: %0.5f\n' % (condition, proportion_flipped))
-        fcntl.flock(fid, fcntl.LOCK_UN)
+    output = output_dir + 'signal_ratio.txt'
+    if os.path.exists(output) == 0 or condition not in open(output).read():
+        with open(output, 'a') as fid:
+            fcntl.flock(fid, fcntl.LOCK_EX)
+            fid.write('%s: %0.5f\n' % (condition, proportion_signal))
+            fcntl.flock(fid, fcntl.LOCK_UN)
+    
+    output = output_dir + 'flipped_ratio.txt'
+    if os.path.exists(output) == 0 or condition not in open(output).read():
+        with open(output, 'a') as fid:
+            fcntl.flock(fid, fcntl.LOCK_EX)
+            fid.write('%s: %0.5f\n' % (condition, proportion_flipped))
+            fcntl.flock(fid, fcntl.LOCK_UN)
         
 print('Finished')

@@ -22,8 +22,8 @@ source code/setup_environment.sh
 #1. Participant number (0 to 20) from the noise parameter files specified in ./simulator_parameters
 #2. Specify the structure type
 #3. Define the signal magnitude
-#3. Specify the signal properties specific to the structure
-#4. Specify the timing properties, minimum isi, randomise and event duration
-#5. What resampled image is it  
+#4. Specify the signal properties specific to the structure
+#5. Specify the timing properties: [minimum isi, randomise, event duration, repetitions per run, event types, deconvolution 
+#6. What resampled image is it  
 
 python ./code/generate_node_brain.py $1 $2 $3 $4 $5 $6

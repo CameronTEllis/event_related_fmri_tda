@@ -39,10 +39,13 @@ def orthonormal_transform(vector_size,
 
 # Create rings in 2d that are spaced in 3d. Can specify the number of rings and relative separation
 def parallel_rings(nodes=100,
-                   rings=2,
-                   ring_separation=1, # How far apart are the rings (the radius of the rings is 1)
+                   ring_radii=[1, 1], # Specify the radii of each ring (the length determines the number of rings
+                   ring_separation=2, # How far apart are the rings (the radius of the rings is 1)
                    ):
-
+    
+    # How many rings are there
+    rings = len(ring_radii)
+    
     # Assume each ring gets the same number of nodes
     nodes_per_ring = int(nodes / rings)
 
@@ -57,11 +60,14 @@ def parallel_rings(nodes=100,
     # Calculate the coordinates for the rings
     signal_coords = np.zeros([nodes_per_ring * rings, 3])
     for ring_counter in list(range(rings)):
+        
+        # How big is this ring
+        radius = ring_radii[ring_counter]
         for node_counter in list(range(0, nodes_per_ring)):
 
             node_idx = node_counter + (nodes_per_ring * ring_counter)
-            x = np.cos(node_angle[node_counter])
-            y = np.sin(node_angle[node_counter])
+            x = np.cos(node_angle[node_counter]) * radius
+            y = np.sin(node_angle[node_counter]) * radius
             z = ring_counter * ring_separation
             signal_coords[node_idx, :] = [x, y, z]
 

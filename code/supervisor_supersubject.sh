@@ -74,71 +74,86 @@ fi
 # Wait to finish
 participant_num=`ls $node_path/*${condition}.nii.gz | wc -l`
 
-# Have you made all the participants already?
-if [ ! -e ${supersubject_path}/${condition}.nii.gz ]
+if [ $participant_num -ne 20 ]
 then
-	if [ $participant_num -ne 20 ]
-	then
+	# Generate participants
+	${code_path}/supervisor_generate_node_brain.sh ${signal_structure} ${signal_magnitude} ${signal_properties} [${min_isi},${randomise_timing},${event_duration},${repetitions_per_run},${nodes},${deconvolution}] $permutation
 
-		# Generate participants
-		${code_path}/supervisor_generate_node_brain.sh ${signal_structure} ${signal_magnitude} ${signal_properties} [${min_isi},${randomise_timing},${event_duration},${repetitions_per_run},${nodes},${deconvolution}] $permutation
-
-        while [ $participant_num -ne 20 ]
-        do
-                participant_num=`ls ${node_path}/*${condition}.nii.gz | wc -l`
-                sleep 30s
-        done
-	fi
+       	while [ $participant_num -ne 20 ]
+       	do
+               	participant_num=`ls ${node_path}/*${condition}.nii.gz | wc -l`
+               	sleep 30s
+       	done
 fi
+
 
 # Wait to finish
 participant_num=`ls ${dist_path}/*${condition}.nii.gz | wc -l`
 
-# Have you made all the participants already?
-if [[ ! -e ${supersubject_path}/${condition}.nii.gz ]]
+# Create the node brain dist
+if [ $participant_num -ne 20 ]
 then
-	if [ $participant_num -ne 20 ]
-	then
 
-		# Convert nodes into distances
-		for i in `seq 1 20`; 
-		do 
-			sbatch -p $short_partition ${code_path}/run_generate_node_brain_dist.sh $node_path/sub-${i}_${condition}.nii.gz;
-		done
+	# Convert nodes into distances
+	for i in `seq 1 20`; 
+	do 
+		sbatch -p $short_partition ${code_path}/run_generate_node_brain_dist.sh $node_path/sub-${i}_${condition}.nii.gz;
+	done
 
-		while [ $participant_num -ne 20 ]
-		do
+	while [ $participant_num -ne 20 ]
+	do
 		participant_num=`ls ${dist_path}/*${condition}.nii.gz | wc -l`
 		sleep 30s
-		done
-		
-	fi
+	done	
 	
-	# Compute the searchlight on all of the participants
-        for i in `seq 1 20`;
-        do
-		# Run the searchlight analysis on this data
-		sbatch -p $short_partition ${code_path}/run_searchlight.sh ${dist_path}/sub-${i}_${condition}.nii.gz loop_max
-		sbatch -p $short_partition ${code_path}/run_searchlight.sh ${dist_path}/sub-${i}_${condition}.nii.gz loop_counter
-	done
+fi
+
+
+# Run the searchlight supervisor
+
+${code_path}/supervisor_searchlight.sh ${dist_path} ${condition} loop_max
+${code_path}/supervisor_searchlight.sh ${dist_path} ${condition} loop_counter
+for ratio in 2 5 10
+do
+	${code_path}/supervisor_searchlight.sh ${dist_path} ${condition} loop_ratio_${ratio}
+done
+
+
+# Have you made all the participants already?
+if [[ ! -e ${supersubject_path}/${condition}.nii.gz ]]
+then	
+
+	echo Aggregating the distance matrices
 
 	# Make super subject of the distance function
 	sbatch -p $short_partition ${code_path}/run_generate_supersubject.sh ${dist_path} $condition 0
 
+	#Wait until the above are done
+	while [ ! -e ${supersubject_path}/${condition}.nii.gz ]
+	do
+		sleep 30s
+	done
+	sleep 20s
 fi
 
-#Wait until the above are done
-while [ ! -e ${supersubject_path}/${condition}.nii.gz ]
-do
-	sleep 30s
-done
-sleep 20s
-
 # Perform searchlights. All tests are for a single loop feature. You should add to test_graph_structure.py if you want more tests
-sbatch ${code_path}/run_searchlight.sh ${supersubject_path}/${condition}.nii.gz loop_ratio
-sbatch ${code_path}/run_searchlight.sh ${supersubject_path}/${condition}.nii.gz loop_counter
-sbatch ${code_path}/run_searchlight.sh ${supersubject_path}/${condition}.nii.gz loop_max
+if [ ! -e ${searchlights_path}/supersubject_${condition}_loop_counter.nii.gz ]
+then
+	sbatch ${code_path}/run_searchlight.sh ${supersubject_path}/${condition}.nii.gz loop_counter
+fi
 
+if [ ! -e ${searchlights_path}/supersubject_${condition}_loop_max.nii.gz ]
+then
+	sbatch ${code_path}/run_searchlight.sh ${supersubject_path}/${condition}.nii.gz loop_max
+fi
+
+for ratio in 2 5 10
+do
+	if [ ! -e ${searchlights_path}/supersubject_${condition}_loop_ratio_${ratio}.nii.gz ]
+	then
+    		sbatch ${code_path}/run_searchlight.sh ${supersubject_path}/${condition}.nii.gz loop_ratio_${ratio}
+	fi
+done
 
 #if [ $permutation != 0 ]
 #then
