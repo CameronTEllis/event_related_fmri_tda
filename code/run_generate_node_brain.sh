@@ -13,7 +13,7 @@
 #
 #SBATCH --output=./logs/generate_data-%j.out
 #SBATCH -t 120
-#SBATCH --mem 20000
+#SBATCH --mem 100000
 
 # Set up the environment
 source code/setup_environment.sh

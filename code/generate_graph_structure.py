@@ -176,9 +176,10 @@ def figure_eight(nodes=100,
 
 # Convert a matrix (observation x coordinate) of coordinates into a vector
 def coord2dist(signal_coords,
+               distance_metric='euclidean',
                ):
     # Calculate the distance matrix
-    dist = sp_distance.squareform(sp_distance.pdist(signal_coords))
+    dist = sp_distance.squareform(sp_distance.pdist(signal_coords, distance_metric))
 
     return dist
 

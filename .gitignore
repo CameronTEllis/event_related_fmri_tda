@@ -7,9 +7,11 @@ simulated_data/supersubject_node_brain_dist/*
 simulated_data/searchlights/*
 simulated_data/resampled_noise_dicts/*
 simulated_data/example_barcodes/*
+simulated_data/randomise/*
 logs/*
 searchlight_summary/*
 validation_summary/*
+randomise_summary/*
 
 # Exceptions
 !plots/.gitkeep
@@ -20,6 +22,9 @@ validation_summary/*
 !simulated_data/supersubject_node_brain_dist/.gitkeep
 !simulated_data/searchlights/.gitkeep
 !simulated_data/resampled_noise_dicts/.gitkeep
-!searchlight_summary/.gitkeep
 !simulated_data/resampled_noise_dicts/.gitkeep
 !simulated_data/example_barcodes/.gitkeep
+!simulated_data/randomise/.gitkeep
+!searchlight_summary/.gitkeep
+!randomise_summary/.gitkeep
+!validation_summary/.gitkeep

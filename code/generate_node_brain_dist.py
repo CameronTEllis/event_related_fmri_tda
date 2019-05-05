@@ -7,12 +7,37 @@ import scipy.spatial.distance as sp_distance
 from brainiak.searchlight.searchlight import Searchlight
 import sys
 from mpi4py import MPI
+from scipy import stats
 
 # What are the system inputs?
 
 # What is the file name
 if len(sys.argv) > 1:
     file = sys.argv[1]
+
+# Do you want to specify a special searchlight radius. Default is 1 (27 voxels)
+if len(sys.argv) > 2:
+    sl_rad =  int(sys.argv[2])
+else:
+    sl_rad = 1
+
+# What is the distance metric being used. This can be any distance compatible with scipy's pdist, like 'correlation' or 'cityblock'
+if len(sys.argv) > 3:
+    dist_metric = sys.argv[3]
+else:
+    dist_metric = 'euclidean'
+
+# If you are using a different metric for computing the similarity matrix then say so here. This can be any distance compatible with scipy's pdist, like 'correlation' or 'cityblock'
+if dist_metric == 'euclidean':
+    dist_name = ''
+else:
+    dist_name = '_' + dist_metric
+
+# If the SL radius is bigger than 1 then create a name
+if sl_rad > 1:
+	sl_name = '_rad_' + str(sl_rad)
+else:
+	sl_name = ''
 
 comm = MPI.COMM_WORLD
 rank = comm.rank
@@ -21,10 +46,10 @@ size = comm.size
 # Load the participants and take a random sample
 # Find the output name
 path = file[0:file.find('_data/')+6]
-participant_name = file[file.find('node_brain/')+11:]
+participant_name = file[file.find('node_brain/')+11:-7]
 
 output_folder = path + 'node_brain_dist/'
-output_name = output_folder + participant_name
+output_name = output_folder + participant_name + sl_name + dist_name + '.nii.gz'
 
 # Print progress
 print('Loading in ' + file)
@@ -39,11 +64,11 @@ mask = node_brain != 0
 mask = mask[:, :, :, 0]
 
 # Create searchlight object
-sl = Searchlight(sl_rad=1, max_blk_edge=5)
+sl = Searchlight(sl_rad=sl_rad, max_blk_edge=5)
 
 # Distribute data to processes
 sl.distribute([node_brain], mask)
-sl.broadcast(None)
+sl.broadcast(dist_metric)
 
 # Define voxel function
 def node2dist(data, mask, myrad, bcvar):
@@ -54,15 +79,14 @@ def node2dist(data, mask, myrad, bcvar):
     mat = data[0].reshape((dimsize[0] * dimsize[1] * dimsize[2],
                            dimsize[3])).astype('double')
 
-    # Calculate the distance matrix
-    distance_matrix = sp_distance.squareform(
-        sp_distance.pdist(np.transpose(mat)))
-
-    # Take the upper triangle of the distance matrix and turn it into a vector
-    dist_vect = distance_matrix[np.triu_indices(distance_matrix.shape[0])]
-
-    # Remove the diagonal
-    dist_vect = dist_vect[dist_vect != 0]
+    # Calculate the distance matrix. Use the bcvar as the metric name
+    if bcvar == 'euclidean_norm':
+        
+        # If using this name, then first z score the data across voxels and then compute the euclidean distance
+        mat = stats.zscore(mat, axis=0)
+        dist_vect = sp_distance.pdist(np.transpose(mat), 'euclidean')
+    else:
+        dist_vect = sp_distance.pdist(np.transpose(mat), bcvar)
 
     # Store the results of the analyses
     return dist_vect
@@ -93,4 +117,4 @@ if rank == 0:
     hdr = sl_nii.header
     hdr.set_zooms((dimsize[0], dimsize[1], dimsize[2], dimsize[3]))
     nibabel.save(sl_nii, output_name)  # Save
-    print('Loading in ' + output_name)
+    print('Outputting in ' + output_name)

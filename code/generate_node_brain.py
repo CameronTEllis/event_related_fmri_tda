@@ -68,6 +68,7 @@ tr_duration = 2  # Force this value
 fwhm = 0 # What is the fwhm of the smoothing kernel
 all_pos = 1  # Assume all activation is positive
 bound_to_global_max = 0 # Is the signal range based on the global average, or is it voxel specific so that each voxel has the signal magnitude specified?
+orthonormal = 1  # Do you want to do orthonormal transformation, or just duplicate each coordinate
 
 # Set analysis parameters
 hrf_lag = 2 # How many TRs is the event offset by?
@@ -254,13 +255,13 @@ vector_size = int(signal_mask.sum())
 # Find all the indices that are significant
 idx_list = np.where(signal_mask == 1)
 
-idxs = np.zeros([vector_size, 3])
+roi_idxs = np.zeros([vector_size, 3])
 for idx_counter in list(range(0, len(idx_list[0]))):
-    idxs[idx_counter, 0] = idx_list[0][idx_counter]
-    idxs[idx_counter, 1] = idx_list[1][idx_counter]
-    idxs[idx_counter, 2] = idx_list[2][idx_counter]
+    roi_idxs[idx_counter, 0] = idx_list[0][idx_counter]
+    roi_idxs[idx_counter, 1] = idx_list[1][idx_counter]
+    roi_idxs[idx_counter, 2] = idx_list[2][idx_counter]
 
-idxs = idxs.astype('int8')    
+roi_idxs = roi_idxs.astype('int8')    
     
 # What voxels are they
 dimensions = signal_mask.shape
@@ -308,8 +309,18 @@ elif signal_structure == 'elipse':
 
 # Perform an orthonormal transformation of the data
 if vector_size > signal_coords.shape[1]:
-    signal_coords = graphs.orthonormal_transform(vector_size,
-                                                      signal_coords)
+    if orthonormal == 1:
+        signal_coords = graphs.orthonormal_transform(vector_size,
+                                                     signal_coords)
+    else:
+        signal_coords = np.tile(signal_coords.T, (vector_size // 2, 1)).T
+        
+        # Shuffle the order of the columns
+        idxs = np.arange(vector_size)
+        np.random.shuffle(idxs)
+
+        signal_coords = signal_coords[:, idxs]
+    
 
 # Do you want these coordinates to be all positive? This means that
 # these coordinates are represented as different magnitudes of
@@ -507,7 +518,7 @@ for run_counter in list(range(1, runs + 1)):
     noise = noise.astype('double')
 
     # Create a noise function (same voxels for signal function as for noise)
-    noise_function = noise[idxs[:, 0], idxs[:, 1], idxs[:, 2], :].T
+    noise_function = noise[roi_idxs[:, 0], roi_idxs[:, 1], roi_idxs[:, 2], :].T
 
     # Compute the signal magnitude for the data
     signal_func_scaled = sim.compute_signal_change(signal_function=signal_func,

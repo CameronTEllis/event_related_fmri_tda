@@ -25,6 +25,8 @@ if len(sys.argv) > 2:
 print('Loading in %s\nOutputting to %s' % (searchlight_file, output_dir))    
     
 expected_loops = 1 # How many loops are expected
+p_thresh = 0.95 # What is the threshold for p values being considered (1-p value)
+
 
 # Pull out the searchlight file    
 start_idx = searchlight_file.rfind('/')
@@ -38,6 +40,7 @@ searchlight_vol = nb.load(searchlight_file).get_data()
 parameters_path = './simulator_parameters/'
 template_file = parameters_path + '/template/sub-1_r1.nii.gz'
 signal_mask_file = parameters_path + '/real_results/significant_mask.nii.gz'
+flipped_mask_file = parameters_path + '/real_results/flipped_mask.nii.gz'
 
 # Load in the masks
 nii = nb.load(template_file)
@@ -47,8 +50,9 @@ wholebrain_mask, _ = mask_brain(template)
 nii = nb.load(signal_mask_file)
 signal_mask = (nii.get_data() > 0).astype('float32')
 
-# Create a mirror image of the signal mask and then use that for comparison
-flipped_mask = np.fliplr(signal_mask)
+# Load the mask which is a mirror version
+nii = nb.load(flipped_mask_file)
+flipped_mask = (nii.get_data() > 0).astype('float32')
 
 # Remove the voxels in the signal mask
 wholebrain_mask -= signal_mask
@@ -77,46 +81,111 @@ scale = whole_counts.max() / signal_counts.max()
 time.sleep(np.random.randint(120))
 
 if searchlight_file.find('loop_max') > -1:
-
-    # Calculate the different in counts
-    tstat_whole = stats.ttest_ind(signal_vox, whole_vox)
-    tstat_flipped = stats.ttest_ind(signal_vox, flipped_vox)
-
-    # Store the t statistic for the test
-    output = output_dir + 'signal_vs_whole.txt'
-    if os.path.exists(output) == 0 or condition not in open(output).read():    
-        with open(output, 'a') as fid:
-            fcntl.flock(fid, fcntl.LOCK_EX)
-            fid.write('%s: %0.5f\n' % (condition, tstat_whole.statistic))
-            fcntl.flock(fid, fcntl.LOCK_UN)
     
-    output = output_dir + 'signal_vs_flipped.txt'
-    if os.path.exists(output) == 0 or condition not in open(output).read():        
-        with open(output, 'a') as fid:
-            fcntl.flock(fid, fcntl.LOCK_EX)
-            fid.write('%s: %0.5f\n' % (condition, tstat_flipped.statistic))
-            fcntl.flock(fid, fcntl.LOCK_UN)
+    if searchlight_file.find('tstat'):
+        
+        # Calculate the number of above chance voxels
+        mean_signal = np.mean(signal_vox > p_thresh)
+        mean_flipped = np.mean(flipped_vox > p_thresh)
+        
+        # Store data
+        output = output_dir + 'signal_max_mean.txt'
+        if os.path.exists(output) == 0 or condition not in open(output).read():
+            with open(output, 'a') as fid:
+                fcntl.flock(fid, fcntl.LOCK_EX)
+                fid.write('%s: %0.5f\n' % (condition, mean_signal))
+                fcntl.flock(fid, fcntl.LOCK_UN)
+
+        output = output_dir + 'flipped_max_mean.txt'
+        if os.path.exists(output) == 0 or condition not in open(output).read():
+            with open(output, 'a') as fid:
+                fcntl.flock(fid, fcntl.LOCK_EX)
+                fid.write('%s: %0.5f\n' % (condition, mean_flipped))
+                fcntl.flock(fid, fcntl.LOCK_UN)
+        
+    else:
+
+        # Calculate the different in counts
+        tstat_whole = stats.ttest_ind(signal_vox, whole_vox)
+        tstat_flipped = stats.ttest_ind(signal_vox, flipped_vox)
+
+        # Store the t statistic for the test
+        output = output_dir + 'signal_vs_whole.txt'
+        if os.path.exists(output) == 0 or condition not in open(output).read():    
+            with open(output, 'a') as fid:
+                fcntl.flock(fid, fcntl.LOCK_EX)
+                fid.write('%s: %0.5f\n' % (condition, tstat_whole.statistic))
+                fcntl.flock(fid, fcntl.LOCK_UN)
+
+        output = output_dir + 'signal_vs_flipped.txt'
+        if os.path.exists(output) == 0 or condition not in open(output).read():        
+            with open(output, 'a') as fid:
+                fcntl.flock(fid, fcntl.LOCK_EX)
+                fid.write('%s: %0.5f\n' % (condition, tstat_flipped.statistic))
+                fcntl.flock(fid, fcntl.LOCK_UN)
+
+        # Calculate the average of the signal voxels
+        mean_signal = signal_vox.mean()
+        mean_flipped = flipped_vox.mean()
+
+        # Store data
+        output = output_dir + 'signal_max_mean.txt'
+        if os.path.exists(output) == 0 or condition not in open(output).read():
+            with open(output, 'a') as fid:
+                fcntl.flock(fid, fcntl.LOCK_EX)
+                fid.write('%s: %0.5f\n' % (condition, mean_signal))
+                fcntl.flock(fid, fcntl.LOCK_UN)
+
+        output = output_dir + 'flipped_max_mean.txt'
+        if os.path.exists(output) == 0 or condition not in open(output).read():
+            with open(output, 'a') as fid:
+                fcntl.flock(fid, fcntl.LOCK_EX)
+                fid.write('%s: %0.5f\n' % (condition, mean_flipped))
+                fcntl.flock(fid, fcntl.LOCK_UN)
     
 elif searchlight_file.find('loop_counter') > -1:
 
-    # Calculate the proportion of voxels that equal 1
-    proportion_signal = (signal_vox == expected_loops).mean()
-    proportion_flipped = (flipped_vox == expected_loops).mean()
-
-    # Store data
-    output = output_dir + 'signal_proportion.txt'
-    if os.path.exists(output) == 0 or condition not in open(output).read():    
-        with open(output, 'a') as fid:
-            fcntl.flock(fid, fcntl.LOCK_EX)
-            fid.write('%s: %0.5f\n' % (condition, proportion_signal))
-            fcntl.flock(fid, fcntl.LOCK_UN)
+    if searchlight_file.find('tstat'):
         
-    output = output_dir + 'flipped_proportion.txt'    
-    if os.path.exists(output) == 0 or condition not in open(output).read():
-        with open(output, 'a') as fid:
-            fcntl.flock(fid, fcntl.LOCK_EX)
-            fid.write('%s: %0.5f\n' % (condition, proportion_flipped))
-            fcntl.flock(fid, fcntl.LOCK_UN)
+        # Calculate the number of above chance voxels
+        mean_signal = np.mean(signal_vox > p_thresh)
+        mean_flipped = np.mean(flipped_vox > p_thresh)
+        
+        # Store data
+        output = output_dir + 'signal_proportion.txt'
+        if os.path.exists(output) == 0 or condition not in open(output).read():
+            with open(output, 'a') as fid:
+                fcntl.flock(fid, fcntl.LOCK_EX)
+                fid.write('%s: %0.5f\n' % (condition, mean_signal))
+                fcntl.flock(fid, fcntl.LOCK_UN)
+
+        output = output_dir + 'flipped_proportion.txt'
+        if os.path.exists(output) == 0 or condition not in open(output).read():
+            with open(output, 'a') as fid:
+                fcntl.flock(fid, fcntl.LOCK_EX)
+                fid.write('%s: %0.5f\n' % (condition, mean_flipped))
+                fcntl.flock(fid, fcntl.LOCK_UN)
+        
+    else:
+
+        # Calculate the proportion of voxels that equal 1
+        proportion_signal = (signal_vox == expected_loops).mean()
+        proportion_flipped = (flipped_vox == expected_loops).mean()
+
+        # Store data
+        output = output_dir + 'signal_proportion.txt'
+        if os.path.exists(output) == 0 or condition not in open(output).read():    
+            with open(output, 'a') as fid:
+                fcntl.flock(fid, fcntl.LOCK_EX)
+                fid.write('%s: %0.5f\n' % (condition, proportion_signal))
+                fcntl.flock(fid, fcntl.LOCK_UN)
+
+        output = output_dir + 'flipped_proportion.txt'    
+        if os.path.exists(output) == 0 or condition not in open(output).read():
+            with open(output, 'a') as fid:
+                fcntl.flock(fid, fcntl.LOCK_EX)
+                fid.write('%s: %0.5f\n' % (condition, proportion_flipped))
+                fcntl.flock(fid, fcntl.LOCK_UN)
             
 elif searchlight_file.find('loop_ratio') > -1:
 
